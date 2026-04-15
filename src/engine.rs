@@ -109,24 +109,89 @@ impl BacktestEngine {
 
     fn should_enter(
         &self,
-        _asset_id: Uuid,
-        _timestamp: chrono::DateTime<chrono::Utc>,
-        _strategy: &Strategy,
-        _time_series_map: &HashMap<Uuid, TimeSeries>,
+        asset_id: Uuid,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        strategy: &Strategy,
+        time_series_map: &HashMap<Uuid, TimeSeries>,
     ) -> bool {
-        // Simplified: placeholder for rule evaluation logic
-        // In a real system, we'd calculate indicators here
-        false
+        if strategy.entry_rules.is_empty() {
+            return false;
+        }
+        strategy.entry_rules.iter().all(|rule| {
+            self.evaluate_rule(rule, asset_id, timestamp, time_series_map)
+        })
     }
 
     fn should_exit(
         &self,
-        _asset_id: Uuid,
-        _timestamp: chrono::DateTime<chrono::Utc>,
-        _strategy: &Strategy,
-        _time_series_map: &HashMap<Uuid, TimeSeries>,
+        asset_id: Uuid,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        strategy: &Strategy,
+        time_series_map: &HashMap<Uuid, TimeSeries>,
     ) -> bool {
-        false
+        if strategy.exit_rules.is_empty() {
+            return false;
+        }
+        strategy.exit_rules.iter().any(|rule| {
+            self.evaluate_rule(rule, asset_id, timestamp, time_series_map)
+        })
+    }
+
+    fn evaluate_rule(
+        &self,
+        rule: &Rule,
+        asset_id: Uuid,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        time_series_map: &HashMap<Uuid, TimeSeries>,
+    ) -> bool {
+        let left_val = self.calculate_indicator(&rule.left, asset_id, timestamp, time_series_map);
+        let right_val = self.calculate_indicator(&rule.right, asset_id, timestamp, time_series_map);
+
+        match (left_val, right_val) {
+            (Some(l), Some(r)) => match rule.operator {
+                RuleOperator::GreaterThan => l > r,
+                RuleOperator::LessThan => l < r,
+                RuleOperator::Equal => l == r,
+                _ => false, // Simplification for MVP
+            },
+            _ => false,
+        }
+    }
+
+    fn calculate_indicator(
+        &self,
+        indicator: &Indicator,
+        asset_id: Uuid,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        time_series_map: &HashMap<Uuid, TimeSeries>,
+    ) -> Option<Decimal> {
+        match indicator {
+            Indicator::Price => self.get_price_at(asset_id, timestamp, time_series_map),
+            Indicator::SMA(period) => self.calculate_sma(asset_id, timestamp, *period, time_series_map),
+            _ => None,
+        }
+    }
+
+    fn calculate_sma(
+        &self,
+        asset_id: Uuid,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        period: usize,
+        time_series_map: &HashMap<Uuid, TimeSeries>,
+    ) -> Option<Decimal> {
+        let ts = time_series_map.get(&asset_id)?;
+        let data: Vec<_> = ts.data.iter()
+            .filter(|p| p.timestamp <= timestamp)
+            .rev()
+            .take(period)
+            .collect();
+        
+        if data.len() < period {
+            return None;
+        }
+
+        let sum: Decimal = data.iter().map(|p| p.close).sum();
+        Some(sum / Decimal::from(period))
     }
 
     fn execute_buy(
