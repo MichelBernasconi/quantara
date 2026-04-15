@@ -1,67 +1,41 @@
 # Quantara: Rust Multi-Asset Rules & Backtesting Engine
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/MichelBernasconi)
+
 Quantara is a high-performance backend built in Rust for backtesting investment strategies across multiple asset classes (stocks, bonds, ETFs, etc.) without the use of AI. It provides a transparent and repeatable environment for testing rule-based algorithms.
 
-## Features
-- **Asset Management**: Support for multiple asset types.
-- **Rules Engine**: Define complex entry and exit rules based on technical indicators (e.g., SMA) and price action.
-- **Backtesting API**: Execute historical simulations and retrieve key performance metrics.
-- **RESTful Interface**: Easy integration for data ingestion and strategy management.
-- **Precision First**: Uses `rust_decimal` to ensure financial accuracy.
+## ✨ Features
+- **Multi-Asset Engine**: Handle Stocks, Bonds, ETFs, and more.
+- **Rules Engine**: Define complex entry/exit conditions using technical indicators.
+- **Indicators**: Support for SMA, RSI, and Constant values.
+- **Rebalancing**: Support for periodic portfolio rebalancing (e.g., monthly).
+- **Precision**: Financial-grade precision using `rust_decimal`.
+- **REST API**: Fully managed via a modern Axum-based web interface.
 
-## Tech Stack
-- **Rust**
-- **Axum** (Web Framework)
-- **Tokio** (Async Runtime)
-- **Serde** (Serialization)
-- **Chrono** (Time Management)
-
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 - Rust (Latest stable)
+- Python (for running examples)
 
 ### Installation
-1. Clone the repository.
-2. Build the project:
-   ```bash
-   cargo build --release
-   ```
-3. Run the server:
-   ```bash
-   cargo run
-   ```
+```bash
+cargo build --release
+cargo run
+```
 The server will start on `http://127.0.0.1:3000`.
 
-## API Usage
+## 📂 Examples & Demos
+We have provided several examples in the `examples/` directory to help you get started:
+- `01_simple_mock`: A basic connectivity test.
+- `02_trend_following`: Real-world SPY data with an SMA 200 trend-following strategy.
+- `03_multi_asset_rotation`: Diversified portfolio with RSI signals and monthly rebalancing.
 
-### Upload Data
-`POST /data`
-```json
-{
-  "asset_id": "uuid...",
-  "data": [
-    {"timestamp": "2023-01-01T00:00:00Z", "open": 100.0, "high": 105.0, "low": 98.0, "close": 102.0}
-  ]
-}
+Run them using:
+```bash
+pip install yfinance requests
+python examples/03_multi_asset_rotation/run.py
 ```
 
-### Define Strategy
-`POST /strategies`
-```json
-{
-  "name": "Moving Average Crossover",
-  "entry_rules": [
-    {"left": "Price", "operator": "GreaterThan", "right": {"SMA": 20}}
-  ],
-  "exit_rules": [
-    {"left": "Price", "operator": "LessThan", "right": {"SMA": 20}}
-  ]
-}
-```
-
-### Run Backtest
-`POST /backtest/{strategy_id}`
-
-## License
-Private
+## 📜 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
