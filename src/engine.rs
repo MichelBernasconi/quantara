@@ -9,6 +9,7 @@ pub struct BacktestEngine {
     pub portfolio: Portfolio,
     pub history: Vec<PortfolioSnapshot>,
     pub trades: Vec<Order>,
+    pub last_rebalance: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,7 @@ impl BacktestEngine {
             },
             history: Vec::new(),
             trades: Vec::new(),
+            last_rebalance: None,
         }
     }
 
@@ -90,6 +92,19 @@ impl BacktestEngine {
                 if self.should_enter(*asset_id, timestamp, strategy, time_series_map) {
                     self.execute_buy(*asset_id, timestamp, time_series_map)?;
                 }
+            }
+        }
+
+        // 4. Handle Rebalancing
+        if let Some(interval) = strategy.rebalance_interval_days {
+            let should_rebalance = match self.last_rebalance {
+                None => true,
+                Some(last) => (timestamp - last).num_days() >= interval,
+            };
+
+            if should_rebalance {
+                self.rebalance(timestamp, time_series_map)?;
+                self.last_rebalance = Some(timestamp);
             }
         }
 
@@ -168,6 +183,8 @@ impl BacktestEngine {
         match indicator {
             Indicator::Price => self.get_price_at(asset_id, timestamp, time_series_map),
             Indicator::SMA(period) => self.calculate_sma(asset_id, timestamp, *period, time_series_map),
+            Indicator::RSI(period) => self.calculate_rsi(asset_id, timestamp, *period, time_series_map),
+            Indicator::Value(val) => Some(*val),
             _ => None,
         }
     }
@@ -201,8 +218,8 @@ impl BacktestEngine {
         time_series_map: &HashMap<Uuid, TimeSeries>,
     ) -> Result<()> {
         if let Some(price) = self.get_price_at(asset_id, timestamp, time_series_map) {
-            // Spend 10% of cash for simplicity in this MVP
-            let amount_to_spend = self.portfolio.cash * dec!(0.1);
+            // Spend 100% of cash for this demonstration
+            let amount_to_spend = self.portfolio.cash * dec!(1.0);
             if amount_to_spend > dec!(0) {
                 let quantity = amount_to_spend / price;
                 self.portfolio.cash -= amount_to_spend;
@@ -250,6 +267,101 @@ impl BacktestEngine {
                 });
             }
         }
+        Ok(())
+    }
+    fn calculate_rsi(
+        &self,
+        asset_id: Uuid,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        period: usize,
+        time_series_map: &HashMap<Uuid, TimeSeries>,
+    ) -> Option<Decimal> {
+        let ts = time_series_map.get(&asset_id)?;
+        let data: Vec<_> = ts.data.iter()
+            .filter(|p| p.timestamp <= timestamp)
+            .rev()
+            .take(period + 1)
+            .collect();
+        
+        if data.len() < period + 1 {
+            return None;
+        }
+
+        let mut gains = dec!(0);
+        let mut losses = dec!(0);
+
+        // Calculate gains/losses from previous price to current
+        for i in (0..period).rev() {
+            let diff = data[i].close - data[i+1].close;
+            if diff > dec!(0) {
+                gains += diff;
+            } else {
+                losses -= diff;
+            }
+        }
+
+        if losses == dec!(0) {
+            return Some(dec!(100));
+        }
+
+        let rs = (gains / Decimal::from(period)) / (losses / Decimal::from(period));
+        Some(dec!(100) - (dec!(100) / (dec!(1) + rs)))
+    }
+
+    fn rebalance(
+        &mut self,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        time_series_map: &HashMap<Uuid, TimeSeries>,
+    ) -> Result<()> {
+        let total_value = self.history.last().map(|s| s.total_value).unwrap_or(dec!(0));
+        if total_value == dec!(0) || self.portfolio.positions.is_empty() {
+            return Ok(());
+        }
+
+        let target_value_per_asset = total_value / Decimal::from(self.portfolio.positions.len());
+
+        let asset_ids: Vec<Uuid> = self.portfolio.positions.keys().cloned().collect();
+        for asset_id in asset_ids {
+            let current_pos = self.portfolio.positions.get(&asset_id).unwrap();
+            let price = self.get_price_at(asset_id, timestamp, time_series_map).unwrap_or(dec!(0));
+            if price == dec!(0) { continue; }
+
+            let current_value = current_pos.quantity * price;
+            if (current_value - target_value_per_asset).abs() > (target_value_per_asset * dec!(0.05)) {
+                if current_value > target_value_per_asset {
+                    let to_sell = (current_value - target_value_per_asset) / price;
+                    self.execute_partial_sell(asset_id, to_sell, price, timestamp)?;
+                } else {
+                    let to_buy = (target_value_per_asset - current_value) / price;
+                    if self.portfolio.cash >= to_buy * price {
+                        self.execute_partial_buy(asset_id, to_buy, price, timestamp)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn execute_partial_buy(&mut self, asset_id: Uuid, quantity: Decimal, price: Decimal, timestamp: chrono::DateTime<chrono::Utc>) -> Result<()> {
+        self.portfolio.cash -= quantity * price;
+        let entry = self.portfolio.positions.entry(asset_id).or_insert(Position {
+            asset_id,
+            quantity: dec!(0),
+            average_price: dec!(0),
+        });
+        entry.average_price = (entry.average_price * entry.quantity + price * quantity) / (entry.quantity + quantity);
+        entry.quantity += quantity;
+        self.trades.push(Order { id: Uuid::new_v4(), asset_id, quantity, price, timestamp, side: OrderSide::Buy });
+        Ok(())
+    }
+
+    fn execute_partial_sell(&mut self, asset_id: Uuid, quantity: Decimal, price: Decimal, timestamp: chrono::DateTime<chrono::Utc>) -> Result<()> {
+        let entry = self.portfolio.positions.get_mut(&asset_id).unwrap();
+        entry.quantity -= quantity;
+        self.portfolio.cash += quantity * price;
+        self.trades.push(Order { id: Uuid::new_v4(), asset_id, quantity, price, timestamp, side: OrderSide::Sell });
+        let is_empty = entry.quantity <= dec!(0);
+        if is_empty { self.portfolio.positions.remove(&asset_id); }
         Ok(())
     }
 }

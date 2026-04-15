@@ -52,6 +52,7 @@ pub enum Indicator {
     EMA(usize), // Exponential Moving Average period
     RSI(usize), // Relative Strength Index period
     Price,
+    Value(Decimal), // Constant value
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
