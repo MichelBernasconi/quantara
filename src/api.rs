@@ -3,6 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 use crate::domain::*;
 use crate::engine::BacktestEngine;
 use crate::metrics::{calculate_metrics, BacktestMetrics};
@@ -24,11 +25,17 @@ pub fn create_router() -> Router {
         strategies: RwLock::new(HashMap::new()),
     });
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     Router::new()
         .route("/assets", post(create_asset).get(list_assets))
         .route("/data", post(upload_data))
         .route("/strategies", post(create_strategy).get(list_strategies))
         .route("/backtest/:strategy_id", post(run_backtest))
+        .layer(cors)
         .with_state(state)
 }
 

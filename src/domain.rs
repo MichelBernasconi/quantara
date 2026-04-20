@@ -48,11 +48,11 @@ pub enum RuleOperator {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Indicator {
-    SMA(usize), // Simple Moving Average period
-    EMA(usize), // Exponential Moving Average period
-    RSI(usize), // Relative Strength Index period
+    SMA(usize),
+    EMA(usize),
+    RSI(usize),
     Price,
-    Value(Decimal), // Constant value
+    Value(Decimal),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,13 +62,32 @@ pub struct Rule {
     pub right: Indicator,
 }
 
+/// Rappresenta il tipo di logica della strategia
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StrategyType {
+    /// Strategia basata su regole logiche predefinite (JSON)
+    RuleBased {
+        entry_rules: Vec<Rule>,
+        exit_rules: Vec<Rule>,
+    },
+    /// Strategia basata su script Python custom
+    Python {
+        script: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Strategy {
     pub id: Uuid,
     pub name: String,
-    pub entry_rules: Vec<Rule>,
-    pub exit_rules: Vec<Rule>,
+    pub strategy_type: StrategyType,
     pub rebalance_interval_days: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum OrderSide {
+    Buy,
+    Sell,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,12 +98,6 @@ pub struct Order {
     pub price: Decimal,
     pub timestamp: DateTime<Utc>,
     pub side: OrderSide,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum OrderSide {
-    Buy,
-    Sell,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
