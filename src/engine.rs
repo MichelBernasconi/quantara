@@ -172,7 +172,8 @@ impl BacktestEngine {
             if let Ok(signal) = locals.get_item("signal") {
                 if let Some(signal_str) = signal {
                     let signal_val: String = signal_str.extract()?;
-                    self.handle_python_signal(&signal_val, timestamp, time_series_map)?;
+                    self.handle_python_signal(&signal_val, timestamp, time_series_map)
+                        .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
                 }
             }
             
